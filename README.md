@@ -1,135 +1,144 @@
-# GoodReads Data Pipeline
+# Scalable ETL Data Pipeline
 
-<img src="https://github.com/san089/goodreads_etl_pipeline/blob/master/docs/images/goodreads.png" align="centre">
+## Overview
 
-## Architecture 
-![Pipeline Architecture](https://github.com/san089/goodreads_etl_pipeline/blob/master/docs/images/architecture.png)
+This project implements a **scalable Extract, Transform, Load (ETL) data pipeline** designed to handle large datasets efficiently. The pipeline extracts data from various sources, transforms it according to specified business rules, and loads it into a data warehouse for analysis. The architecture ensures scalability, reliability, and maintainability, leveraging modern data engineering tools and practices.
 
-Pipeline Consists of various modules:
+## Architecture
 
- - [GoodReads Python Wrapper](https://github.com/san089/goodreads)
- - ETL Jobs
- - Redshift Warehouse Module
- - Analytics Module 
+The ETL pipeline comprises the following components:
 
-#### Overview
-Data is captured in real time from the goodreads API using the Goodreads Python wrapper (View usage - [Fetch Data Module](https://github.com/san089/goodreads/blob/master/example/fetchdata.py)). The data collected from the goodreads API is stored on local disk and is timely moved to the Landing Bucket on AWS S3. ETL jobs are written in spark and scheduled in airflow to run every 10 minutes.  
+1. **Data Ingestion**: Utilizes a custom Python wrapper to interact with the GoodReads API, collecting data such as book information, reviews, and ratings.
 
-### ETL Flow
+2. **Data Storage**:
+   - **Landing Zone**: Raw data is initially stored locally before being uploaded to the **Landing Bucket** on AWS S3.
+   - **Working Zone**: Data is moved from the landing zone to the working zone on S3 for processing.
 
- - Data Collected from the API is moved to landing zone s3 buckets.
- - ETL job has s3 module which copies data from landing zone to working zone.
- - Once the data is moved to working zone, spark job is triggered which reads the data from working zone and apply transformation. Dataset is repartitioned and moved to the Processed Zone.
- - Warehouse module of ETL jobs picks up data from processed zone and stages it into the Redshift staging tables.
- - Using the Redshift staging tables and UPSERT operation is performed on the Data Warehouse tables to update the dataset.
- - ETL job execution is completed once the Data Warehouse is updated. 
- - Airflow DAG runs the data quality check on all Warehouse tables once the ETL job execution is completed.
- - Airflow DAG has Analytics queries configured in a Custom Designed Operator. These queries are run and again a Data Quality Check is done on some selected Analytics Table.
- - Dag execution completes after these Data Quality check.
+3. **Data Processing**:
+   - **ETL Jobs**: Implemented using Apache Spark, these jobs are scheduled via Apache Airflow to run at regular intervals (e.g., every 10 minutes).
+   - **Transformations**: Data is cleaned, normalized, and transformed to fit the target schema.
 
-## Environment Setup
+4. **Data Loading**: Processed data is loaded into an Amazon Redshift data warehouse for analytical querying.
 
-### Hardware Used
-EMR - I used a 3 node cluster with below Instance Types:
+5. **Analytics Module**: Provides tools and scripts for data analysis and visualization.
 
-    m5.xlarge
-    4 vCore, 16 GiB memory, EBS only storage
-    EBS Storage:64 GiB
-Redshift: For Redshift I used 2 Node cluster with Instance Types `dc2.large`
+## Project Structure
 
-### Setting Up Airflow
+The repository is organized as follows:
 
-I have written detailed instruction on how to setup Airflow using AWS CloudFormation script.  Check out - [Airflow using AWS CloudFormation](https://github.com/san089/Data_Engineering_Projects/blob/master/Airflow_Livy_Setup_CloudFormation.md)
+```
+Scalable-ETL-Data-Pipeline/
+│
+├── SampleData/               # Sample datasets for testing
+│
+├── Utility/                  # Utility scripts and modules
+│   ├── s3_module.py          # Functions for S3 interactions
+│   └── ...
+│
+├── airflow/                  # Apache Airflow configurations
+│   ├── dags/                 # Directed Acyclic Graphs (DAGs)
+│   └── plugins/              # Custom Airflow plugins
+│
+├── docs/                     # Documentation and resources
+│   └── architecture.png      # Architecture diagram
+│
+├── goodreadsfaker/           # Module to simulate GoodReads API responses
+│   └── faker.py
+│
+├── src/                      # Source code for ETL processes
+│   ├── extract.py            # Data extraction logic
+│   ├── transform.py          # Data transformation logic
+│   └── load.py               # Data loading logic
+│
+├── .gitignore                # Git ignore file
+├── LICENSE                   # License information
+└── README.md                 # Project overview and instructions
+```
 
-**NOTE: This setup uses EC2 instance and a Postgres RDS instance. Make sure to check out charges before running the CloudFromation Stack.** 
+## Setup Instructions
 
-Project uses `sshtunnel` to submit spark jobs using a ssh connection from the EC2 instance. This setup does not automatically install `sshtunnel` for apache airflow. You can install by running below command: 
+### Prerequisites
 
-    pip install apache-airflow[sshtunnel]
+- **Python 3.7+**: Ensure Python is installed.
+- **Apache Spark**: For data processing tasks.
+- **Apache Airflow**: For workflow orchestration.
+- **AWS Account**: Access to AWS services like S3 and Redshift.
 
-Finally, copy the dag and plugin folder to EC2 inside airflow home directory. Also, checkout [Airflow Connection](https://github.com/san089/goodreads_etl_pipeline/blob/master/docs/Airflow_Connections.md) for setting up connection to EMR and Redshift from Airflow.
+### Installation Steps
 
-### Setting up EMR
-Spinning up EMR cluster is pretty straight forward. You can use AWS Guide available [here](https://docs.aws.amazon.com/emr/latest/ManagementGuide/emr-gs.html).
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/AlexShao1116/Scalable-ETL-Data-Pipeline.git
+   cd Scalable-ETL-Data-Pipeline
+   ```
 
-ETL jobs in the project uses [psycopg2](https://pypi.org/project/psycopg2/) to connect to Redshift cluster to run staging and warehouse queries. 
-To install psycopg2 on EMR:
+2. **Set Up Virtual Environment**:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate   # On Windows: venv\Scriptsctivate
+   ```
 
-    sudo pip-3.6 install psycopg2
+3. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-psycopg2 uses `postgresql-devel` and `postgresql-libs`, and sometimes pscopg2 installation may fail if these dependencies are not available. To install run commands:
+4. **Configure AWS Credentials**:
+   - Ensure your AWS credentials are set up, typically in `~/.aws/credentials`.
+   - Update the `Utility/s3_module.py` with your S3 bucket names and paths.
 
-    sudo yum install postgresql-libs
-    sudo yum install postgresql-devel
+5. **Initialize Airflow**:
+   ```bash
+   airflow db init
+   airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com
+   ```
 
-ETL jobs also use [boto3](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html) move files between s3 buckets. To install boto3 run:
+6. **Start Airflow Scheduler and Webserver**:
+   ```bash
+   airflow scheduler
+   airflow webserver --port 8080
+   ```
 
-    pip-3.6 install boto3 --user
+7. **Deploy Airflow DAGs**:
+   - Place your DAG files in the `airflow/dags/` directory.
+   - Access the Airflow web interface at `http://localhost:8080` to monitor and trigger DAGs.
 
-Finally,  pyspark uses python2 as default setup on EMR. To change to python3, setup environment variables:
+## Usage
 
-    export PYSPARK_DRIVER_PYTHON=python3
-    export PYSPARK_PYTHON=python3
+1. **Data Ingestion**:
+   - Run the `goodreadsfaker/faker.py` script to simulate data ingestion from the GoodReads API.
 
-Copy the ETL scripts to EMR and we have our EMR ready to run jobs. 
+2. **ETL Process**:
+   - Airflow schedules and triggers the ETL jobs as defined in the DAGs.
+   - Monitor the ETL process via the Airflow web interface.
 
-### Setting up Redshift
-You can follow the AWS [ Guide](https://docs.aws.amazon.com/redshift/latest/gsg/rs-gsg-launch-sample-cluster.html) to run a Redshift cluster or alternatively you can use [Redshift_Cluster_IaC.py](https://github.com/san089/Data_Engineering_Projects/blob/master/Redshift_Cluster_IaC.py) Script to create cluster automatically. 
+3. **Data Analysis**:
+   - Use SQL clients or BI tools to query the data in Amazon Redshift.
+   - Sample queries can be found in the `docs/queries.sql` file.
 
+## Contributing
 
-## How to run 
-Make sure Airflow webserver and scheduler is running. 
-Open the Airflow UI `http://< ec2-instance-ip >:< configured-port >` 
+Contributions are welcome! Please follow these steps:
 
-GoodReads Pipeline DAG
-![Pipeline DAG](https://github.com/san089/goodreads_etl_pipeline/blob/master/docs/images/goodreads_dag.PNG)
+1. **Fork the Repository**: Click the "Fork" button on GitHub.
+2. **Create a Feature Branch**:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. **Commit Your Changes**:
+   ```bash
+   git commit -m "Description of your feature"
+   ```
+4. **Push to Your Fork**:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+5. **Submit a Pull Request**: Navigate to the original repository and click "New Pull Request".
 
-DAG View:
-![DAG View](https://github.com/san089/goodreads_etl_pipeline/blob/master/docs/images/DAG.PNG)
+## License
 
-DAG Tree View:
-![DAG Tree](https://github.com/san089/goodreads_etl_pipeline/blob/master/docs/images/DAG_tree_view.PNG)
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-DAG Gantt View: 
-![DAG Gantt View](https://github.com/san089/goodreads_etl_pipeline/blob/master/docs/images/DAG_Gantt.PNG)
+## Acknowledgments
 
-
-## Testing the Limits
-The `goodreadsfaker` module in this project generates Fake data which is used to test the ETL pipeline on heavy load.  
-
- To test the pipeline I used `goodreadsfaker` to generate 11.4 GB of data which is to be processed every 10 minutes (including ETL jobs + populating data into warehouse + running analytical queries) by the pipeline which equates to around 68 GB/hour and about 1.6 TB/day.
-
-Source DataSet Count:
-![Source Dataset Count](https://github.com/san089/goodreads_etl_pipeline/blob/master/docs/images/DatasetCount.PNG)
-
-
-DAG Run Results:
-![GoodReads DAG Run](https://github.com/san089/goodreads_etl_pipeline/blob/master/docs/images/DAG_tree_view.PNG)
-
-Data Loaded to Warehouse:
-![GoodReads Warehouse Count](https://github.com/san089/goodreads_etl_pipeline/blob/master/docs/images/WarehouseCount.PNG)
-
-
-
-## Scenarios
-
--   Data increase by 100x. read > write. write > read
-    
-    -   Redshift: Analytical database, optimized for aggregation, also good performance for read-heavy workloads
-    -   Increase EMR cluster size to handle bigger volume of data
-
--   Pipelines would be run on 7am daily. how to update dashboard? would it still work?
-    
-    -   DAG is scheduled to run every 10 minutes and can be configured to run every morning at 7 AM if required. 
-    -   Data quality operators are used at appropriate position. In case of DAG failures email triggers can be configured to let the team know about pipeline failures.
-    
--   Make it available to 100+ people
-    -   We can set the concurrency limit for your Amazon Redshift cluster. While the concurrency limit is 50 parallel queries for a single period of time, this is on a per cluster basis, meaning you can launch as many clusters as fit for you business.
- 
-
-
-
-
-
-
-
+Special thanks to the contributors and the open-source community for their invaluable resources and tools.
